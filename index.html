@@ -59,7 +59,33 @@
             .then(response => response.text())
             .then(kmlText => {
                 console.log("KML data loaded successfully from GitHub!");
-                // We will add the logic to draw the route and chart in the next step
+                
+                // 1. Parse the text into an XML document
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(kmlText, "text/xml");
+                
+                // 2. Find the specific coordinates for the continuous path (LineString)
+                const lineString = xmlDoc.getElementsByTagName("LineString")[0];
+                const coordinatesText = lineString.getElementsByTagName("coordinates")[0].textContent;
+                
+                // 3. Clean up the spacing and split into individual points
+                const points = coordinatesText.trim().split(/\s+/);
+                const latLngs = [];
+                
+                // 4. Loop through each point (Longitude, Latitude, Altitude)
+                points.forEach(point => {
+                    const [lon, lat, alt] = point.split(',');
+                    if (lat && lon) {
+                        // Leaflet requires coordinates in [Latitude, Longitude] format
+                        latLngs.push([parseFloat(lat), parseFloat(lon)]);
+                    }
+                });
+
+                // 5. Draw the red route line on the map
+                const routeLine = L.polyline(latLngs, { color: 'red', weight: 5 }).addTo(map);
+                
+                // 6. Automatically zoom and pan the map to fit the entire stage perfectly
+                map.fitBounds(routeLine.getBounds());
             })
             .catch(error => console.error("Error loading KML:", error));
     </script>
