@@ -1,1 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StageMaster - Route & Chart</title>
+    <!-- Leaflet CSS for the map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            display: flex; 
+            flex-direction: column; 
+            height: 100vh; 
+            font-family: sans-serif; 
+        }
+        #top-pane { 
+            flex: 1; 
+            border-bottom: 3px solid #333; 
+            padding: 10px; 
+            box-sizing: border-box; 
+        }
+        #bottom-pane { 
+            flex: 1; 
+        }
+        canvas { 
+            width: 100% !important; 
+            height: 100% !important; 
+        }
+    </style>
+</head>
+<body>
+    
+    <!-- Top Half: Where the Altitude Chart will go -->
+    <div id="top-pane">
+        <canvas id="altitudeChart"></canvas>
+    </div>
 
+    <!-- Bottom Half: Where the Route Map will go -->
+    <div id="bottom-pane"></div>
+
+    <!-- Scripts for Map and Chart -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        // 1. Initialize the Base Map in the bottom pane
+        const map = L.map('bottom-pane').setView([38.052, 23.828], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // 2. Fetch the KML file from your GitHub repository
+        const kmlUrl = "https://raw.githubusercontent.com/Pilirallyapp/stahemaster-map-chart/refs/heads/main/home-to-gini.kml";
+        
+        fetch(kmlUrl)
+            .then(response => response.text())
+            .then(kmlText => {
+                console.log("KML data loaded successfully from GitHub!");
+                // We will add the logic to draw the route and chart in the next step
+            })
+            .catch(error => console.error("Error loading KML:", error));
+    </script>
+</body>
+</html>
