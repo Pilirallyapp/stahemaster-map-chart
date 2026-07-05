@@ -7,23 +7,30 @@
     <!-- Leaflet CSS for the map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body { 
+        /* Ensuring the body takes up the full screen height perfectly */
+        html, body { 
             margin: 0; 
             padding: 0; 
+            height: 100%; 
+            width: 100%;
             display: flex; 
             flex-direction: column; 
-            height: 100vh; 
             font-family: sans-serif; 
         }
+        
+        /* Hard-coding the height to 50% so the map cannot collapse */
         #top-pane { 
-            flex: 1; 
+            height: 50%; 
             border-bottom: 3px solid #333; 
             padding: 10px; 
             box-sizing: border-box; 
         }
+        
         #bottom-pane { 
-            flex: 1; 
+            height: 50%; 
+            width: 100%;
         }
+        
         canvas { 
             width: 100% !important; 
             height: 100% !important; 
@@ -32,59 +39,59 @@
 </head>
 <body>
     
-    <!-- Top Half: Where the Altitude Chart will go -->
+    <!-- Top Half: Altitude Chart -->
     <div id="top-pane">
         <canvas id="altitudeChart"></canvas>
     </div>
 
-    <!-- Bottom Half: Where the Route Map will go -->
+    <!-- Bottom Half: Route Map -->
     <div id="bottom-pane"></div>
 
-    <!-- Scripts for Map and Chart -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
-        // 1. Initialize the Base Map in the bottom pane
+        // 1. Initialize the map
         const map = L.map('bottom-pane').setView([38.052, 23.828], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '© OpenStreetMap'
         }).addTo(map);
 
-        // 2. Fetch the KML file from your GitHub repository
+        // 2. Fetch the KML file
         const kmlUrl = "https://raw.githubusercontent.com/Pilirallyapp/stahemaster-map-chart/refs/heads/main/home-to-gini.kml";
         
         fetch(kmlUrl)
-            .then(response => response.text())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error("Network response was not ok");
+                }
+                return response.text();
+            })
             .then(kmlText => {
-                console.log("KML data loaded successfully from GitHub!");
+                console.log("KML data loaded successfully!");
                 
-                // 1. Parse the text into an XML document
+                // 3. Parse XML
                 const parser = new DOMParser();
                 const xmlDoc = parser.parseFromString(kmlText, "text/xml");
                 
-                // 2. Find the specific coordinates for the continuous path (LineString)
+                // 4. Find the continuous path coordinates
                 const lineString = xmlDoc.getElementsByTagName("LineString")[0];
                 const coordinatesText = lineString.getElementsByTagName("coordinates")[0].textContent;
                 
-                // 3. Clean up the spacing and split into individual points
+                // 5. Clean up spacing and split into points
                 const points = coordinatesText.trim().split(/\s+/);
                 const latLngs = [];
                 
-                // 4. Loop through each point (Longitude, Latitude, Altitude)
                 points.forEach(point => {
                     const [lon, lat, alt] = point.split(',');
                     if (lat && lon) {
-                        // Leaflet requires coordinates in [Latitude, Longitude] format
                         latLngs.push([parseFloat(lat), parseFloat(lon)]);
                     }
                 });
 
-                // 5. Draw the red route line on the map
+                // 6. Draw the red route line and zoom to fit
                 const routeLine = L.polyline(latLngs, { color: 'red', weight: 5 }).addTo(map);
-                
-                // 6. Automatically zoom and pan the map to fit the entire stage perfectly
                 map.fitBounds(routeLine.getBounds());
             })
             .catch(error => console.error("Error loading KML:", error));
