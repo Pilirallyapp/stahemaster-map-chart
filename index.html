@@ -52,7 +52,7 @@
             display: flex;
             flex-direction: column;
             gap: 5px;
-            pointer-events: none; /* Lets you click/drag through it to the map */
+            pointer-events: none;
             box-shadow: 0px 4px 10px rgba(0,0,0,0.5);
         }
 
@@ -93,7 +93,6 @@
     </div>
 
     <div id="bottom-pane">
-        <!-- HUD Box injected over the map -->
         <div id="hud-box">
             <div class="hud-row">
                 <span class="hud-label">DIST</span>
@@ -118,8 +117,8 @@
 
         let carMarker = null;
         let routeData = []; 
-        let activeIndex = -1;
-        window.altChart = null; // Store chart globally for bi-directional sync
+        let activeIndex = 0; 
+        window.altChart = null; 
 
         function getDistance(lat1, lon1, lat2, lon2) {
             const R = 6371; 
@@ -138,7 +137,6 @@
             return ((Math.atan2(y, x) * toDeg) + 360) % 360;
         }
 
-        // Find closest point in route array for map clicks/drags
         function findNearestPointIndex(lat, lon) {
             let minD = Infinity;
             let closestIdx = 0;
@@ -149,9 +147,9 @@
             return closestIdx;
         }
 
-        // --- MASTER SYNC ENGINE ---
+        // --- MASTER BI-DIRECTIONAL SYNC ENGINE ---
         function updateUI(index, source) {
-            if (index === activeIndex) return;
+            if (index === activeIndex && source !== 'init') return;
             activeIndex = index;
             const dataPoint = routeData[index];
 
@@ -159,13 +157,10 @@
             document.getElementById('hud-dist').innerText = dataPoint.dist + " km";
             document.getElementById('hud-alt').innerText = dataPoint.alt + " m";
 
-            // 2. Update Map Position (Only if we aren't currently dragging it with our finger)
-            if (source !== 'map_drag' && carMarker) {
-                carMarker.setLatLng([dataPoint.lat, dataPoint.lon]);
-            }
-            
-            // 3. Update Car Rotation
+            // 2. Update Map Position
             if (carMarker) {
+                carMarker.setLatLng([dataPoint.lat, dataPoint.lon]);
+                
                 let carImageUrl = 'https://raw.githubusercontent.com/Pilirallyapp/stahemaster-map-chart/main/4x4.png';
                 const updatedIcon = L.divIcon({
                     html: `<img src="${carImageUrl}" class="car-icon-img" style="transform: rotate(${dataPoint.bearing}deg);">`,
@@ -176,23 +171,18 @@
                 carMarker.setIcon(updatedIcon);
             }
 
-            // 4. Update Chart Laser Line (if interaction came from the Map)
-            if (source !== 'chart' && window.altChart) {
-                const chart = window.altChart;
-                chart.tooltip.setActiveElements([{ datasetIndex: 0, index: index }], {
-                    x: chart.scales.x.getPixelForValue(chart.data.labels[index]),
-                    y: chart.scales.y.getPixelForValue(chart.data.datasets[0].data[index])
-                });
-                chart.update();
+            // 3. Force Chart Laser Line to jump to the new point
+            if (window.altChart) {
+                window.altChart.update('none'); 
             }
         }
 
-        // --- LASER TRACKER PLUGIN FOR CHART.JS ---
+        // --- HARD-CODED LASER TRACKER PLUGIN ---
         const verticalTrackerPlugin = {
             id: 'verticalTracker',
             afterDraw: chart => {
-                if (chart.tooltip?._active?.length) {
-                    let x = chart.tooltip._active[0].element.x;
+                if (activeIndex >= 0 && activeIndex < chart.data.labels.length) {
+                    let x = chart.scales.x.getPixelForTick(activeIndex);
                     let yAxis = chart.scales.y;
                     let ctx = chart.ctx;
                     ctx.save();
@@ -200,8 +190,14 @@
                     ctx.moveTo(x, yAxis.top);
                     ctx.lineTo(x, yAxis.bottom);
                     ctx.lineWidth = 2;
-                    ctx.strokeStyle = '#ea4335'; // Red laser line
+                    ctx.strokeStyle = '#ea4335'; 
                     ctx.stroke();
+                    
+                    let y = chart.scales.y.getPixelForValue(chart.data.datasets[0].data[activeIndex]);
+                    ctx.beginPath();
+                    ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#ea4335';
+                    ctx.fill();
                     ctx.restore();
                 }
             }
@@ -266,16 +262,38 @@
                     routeData[0].bearing = routeData[1].bearing;
                 }
 
-                // Make route line RED and clickable
-                const routeLine = L.polyline(latLngs, { color: '#ea4335', weight: 6, opacity: 0.8 }).addTo(map);
+                // Draw Red Route Line (Thicker for easier mobile tapping)
+                const routeLine = L.polyline(latLngs, { color: '#ea4335', weight: 8, opacity: 0.8 }).addTo(map);
                 map.fitBounds(routeLine.getBounds());
                 
-                routeLine.on('click', function(e) {
-                    const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
-                    updateUI(index, 'map_click');
+                // --- MAP SCRUBBING LOGIC ---
+                let isScrubbing = false;
+
+                routeLine.on('mousedown touchstart', function(e) {
+                    L.DomEvent.stopPropagation(e);
+                    isScrubbing = true;
+                    map.dragging.disable(); // Stop map from panning
+                    if (e.latlng) {
+                        const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
+                        updateUI(index, 'map_drag');
+                    }
                 });
 
-                // Make Car Draggable
+                map.on('mousemove touchmove', function(e) {
+                    if (isScrubbing && e.latlng) {
+                        const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
+                        updateUI(index, 'map_drag');
+                    }
+                });
+
+                map.on('mouseup touchend', function() {
+                    if (isScrubbing) {
+                        isScrubbing = false;
+                        map.dragging.enable();
+                    }
+                });
+
+                // Generate Car Marker
                 let carImageUrl = 'https://raw.githubusercontent.com/Pilirallyapp/stahemaster-map-chart/main/4x4.png';
                 let carIcon = L.divIcon({
                     html: `<img src="${carImageUrl}" class="car-icon-img" style="transform: rotate(${routeData[0].bearing}deg);">`,
@@ -287,22 +305,10 @@
                 carMarker = L.marker([routeData[0].lat, routeData[0].lon], {
                     icon: carIcon, 
                     zIndexOffset: 1000,
-                    draggable: true // Let finger drag it on mobile
+                    interactive: false // Passes touches through to the route line below it
                 }).addTo(map);
 
-                // Update chart live while dragging car
-                carMarker.on('drag', function(e) {
-                    const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
-                    updateUI(index, 'map_drag');
-                });
-
-                // Snap car onto the road when finger releases
-                carMarker.on('dragend', function(e) {
-                    const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
-                    carMarker.setLatLng([routeData[index].lat, routeData[index].lon]);
-                });
-
-                // Initialize Chart
+                // Build the Chart
                 const ctx = document.getElementById('altitudeChart').getContext('2d');
                 window.altChart = new Chart(ctx, {
                     type: 'line',
@@ -316,9 +322,7 @@
                             backgroundColor: 'rgba(191, 149, 63, 0.2)',
                             fill: true,
                             tension: 0.2,
-                            pointRadius: 0,
-                            pointHoverRadius: 6,
-                            pointHoverBackgroundColor: '#ea4335'
+                            pointRadius: 0
                         }]
                     },
                     options: {
@@ -330,7 +334,7 @@
                         },
                         plugins: {
                             legend: { display: false },
-                            tooltip: { enabled: false }
+                            tooltip: { enabled: false } 
                         },
                         scales: {
                             x: {
@@ -350,7 +354,7 @@
                     }
                 });
 
-                // Initialize UI with starting point
+                // Start engine at position zero
                 updateUI(0, 'init');
             })
             .catch(error => console.error("Error loading KML:", error));
