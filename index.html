@@ -15,6 +15,7 @@
             flex-direction: column; 
             font-family: sans-serif; 
             background-color: #1a1a1a;
+            overflow: hidden; 
         }
         
         #top-pane { 
@@ -182,18 +183,24 @@
             id: 'verticalTracker',
             afterDraw: chart => {
                 if (activeIndex >= 0 && activeIndex < chart.data.labels.length) {
-                    let x = chart.scales.x.getPixelForTick(activeIndex);
-                    let yAxis = chart.scales.y;
                     let ctx = chart.ctx;
+                    
+                    let meta = chart.getDatasetMeta(0);
+                    if (!meta || !meta.data || !meta.data[activeIndex]) return;
+                    
+                    let x = meta.data[activeIndex].x;
+                    let topY = chart.chartArea.top;
+                    let bottomY = chart.chartArea.bottom;
+
                     ctx.save();
                     ctx.beginPath();
-                    ctx.moveTo(x, yAxis.top);
-                    ctx.lineTo(x, yAxis.bottom);
+                    ctx.moveTo(x, topY);
+                    ctx.lineTo(x, bottomY);
                     ctx.lineWidth = 2;
                     ctx.strokeStyle = '#ea4335'; 
                     ctx.stroke();
                     
-                    let y = chart.scales.y.getPixelForValue(chart.data.datasets[0].data[activeIndex]);
+                    let y = meta.data[activeIndex].y;
                     ctx.beginPath();
                     ctx.arc(x, y, 6, 0, 2 * Math.PI);
                     ctx.fillStyle = '#ea4335';
@@ -262,36 +269,19 @@
                     routeData[0].bearing = routeData[1].bearing;
                 }
 
-                // Draw Red Route Line (Thicker for easier mobile tapping)
-                const routeLine = L.polyline(latLngs, { color: '#ea4335', weight: 8, opacity: 0.8 }).addTo(map);
+                // Draw Red Route Line
+                const routeLine = L.polyline(latLngs, { color: '#ea4335', weight: 10, opacity: 0.8 }).addTo(map);
                 map.fitBounds(routeLine.getBounds());
                 
-                // --- MAP SCRUBBING LOGIC ---
+                // Allow tapping anywhere on the red line to jump the car
+                routeLine.on('click', function(e) {
+                    const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
+                    updateUI(index, 'map_click');
+                });
+                
+                // --- MAP SCRUBBING LOGIC (CAR SPECIFIC) ---
                 let isScrubbing = false;
-
-                routeLine.on('mousedown touchstart', function(e) {
-                    L.DomEvent.stopPropagation(e);
-                    isScrubbing = true;
-                    map.dragging.disable(); // Stop map from panning
-                    if (e.latlng) {
-                        const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
-                        updateUI(index, 'map_drag');
-                    }
-                });
-
-                map.on('mousemove touchmove', function(e) {
-                    if (isScrubbing && e.latlng) {
-                        const index = findNearestPointIndex(e.latlng.lat, e.latlng.lng);
-                        updateUI(index, 'map_drag');
-                    }
-                });
-
-                map.on('mouseup touchend', function() {
-                    if (isScrubbing) {
-                        isScrubbing = false;
-                        map.dragging.enable();
-                    }
-                });
+                const bottomPane = document.getElementById('bottom-pane');
 
                 // Generate Car Marker
                 let carImageUrl = 'https://raw.githubusercontent.com/Pilirallyapp/stahemaster-map-chart/main/4x4.png';
@@ -304,9 +294,46 @@
                 
                 carMarker = L.marker([routeData[0].lat, routeData[0].lon], {
                     icon: carIcon, 
-                    zIndexOffset: 1000,
-                    interactive: false // Passes touches through to the route line below it
+                    zIndexOffset: 1000
                 }).addTo(map);
+
+                // Start scrubbing ONLY when touching the car
+                carMarker.on('mousedown touchstart', function(e) {
+                    L.DomEvent.stopPropagation(e);
+                    isScrubbing = true;
+                    map.dragging.disable(); // Freeze map only when grabbing car
+                });
+
+                // Raw DOM listener to track finger perfectly even when map is frozen
+                function handleMove(e) {
+                    if (!isScrubbing) return;
+                    if (e.cancelable) e.preventDefault(); // Stop mobile screen scrolling
+                    
+                    let clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                    let clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                    
+                    if (clientX && clientY) {
+                        let rect = bottomPane.getBoundingClientRect();
+                        let containerPoint = L.point(clientX - rect.left, clientY - rect.top);
+                        let latlng = map.containerPointToLatLng(containerPoint);
+                        
+                        let index = findNearestPointIndex(latlng.lat, latlng.lng);
+                        updateUI(index, 'map_drag');
+                    }
+                }
+
+                bottomPane.addEventListener('mousemove', handleMove, { passive: false });
+                bottomPane.addEventListener('touchmove', handleMove, { passive: false });
+
+                function stopScrubbing() {
+                    if (isScrubbing) {
+                        isScrubbing = false;
+                        map.dragging.enable(); // Unfreeze map
+                    }
+                }
+
+                window.addEventListener('mouseup', stopScrubbing);
+                window.addEventListener('touchend', stopScrubbing);
 
                 // Build the Chart
                 const ctx = document.getElementById('altitudeChart').getContext('2d');
