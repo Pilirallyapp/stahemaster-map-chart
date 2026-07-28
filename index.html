@@ -89,6 +89,7 @@
             -webkit-user-drag: none;
             user-select: none;
             touch-action: none;
+            pointer-events: none;
         }
     </style>
 </head>
@@ -167,14 +168,13 @@
             if (carMarker) {
                 carMarker.setLatLng([dataPoint.lat, dataPoint.lon]);
                 
-                let carImageUrl = 'https://raw.githubusercontent.com/Pilirallyapp/stahemaster-map-chart/main/4x4.png';
-                const updatedIcon = L.divIcon({
-                    html: `<img src="${carImageUrl}" class="car-icon-img" style="transform: rotate(${dataPoint.bearing}deg);">`,
-                    className: 'custom-car-div',
-                    iconSize: [40, 40],
-                    iconAnchor: [20, 20]
-                });
-                carMarker.setIcon(updatedIcon);
+                const carElement = carMarker.getElement();
+                if (carElement) {
+                    const img = carElement.querySelector('.car-icon-img');
+                    if (img) {
+                        img.style.transform = `rotate(${dataPoint.bearing}deg)`;
+                    }
+                }
             }
 
             // 3. Force Chart Laser Line to jump to the new point
@@ -291,7 +291,7 @@
                 // Generate Car Marker
                 let carImageUrl = 'https://raw.githubusercontent.com/Pilirallyapp/stahemaster-map-chart/main/4x4.png';
                 let carIcon = L.divIcon({
-                    html: `<img src="${carImageUrl}" class="car-icon-img" style="transform: rotate(${routeData[0].bearing}deg);">`,
+                    html: `<img src="${carImageUrl}" class="car-icon-img" draggable="false" oncontextmenu="return false;" style="transform: rotate(${routeData[0].bearing}deg);">`,
                     className: 'custom-car-div',
                     iconSize: [40, 40],
                     iconAnchor: [20, 20]
@@ -305,6 +305,9 @@
                 // Start scrubbing ONLY when touching the car
                 carMarker.on('mousedown touchstart', function(e) {
                     L.DomEvent.stopPropagation(e);
+                    if (e.originalEvent) {
+                        e.originalEvent.preventDefault(); 
+                    }
                     isScrubbing = true;
                     map.dragging.disable(); // Freeze map only when grabbing car
                 });
