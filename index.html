@@ -330,8 +330,9 @@
                     }
                 }
 
-                bottomPane.addEventListener('mousemove', handleMove, { passive: false });
-                bottomPane.addEventListener('touchmove', handleMove, { passive: false });
+                // Force window to capture the move events BEFORE Leaflet can swallow them
+                window.addEventListener('mousemove', handleMove, { passive: false, capture: true });
+                window.addEventListener('touchmove', handleMove, { passive: false, capture: true });
 
                 function stopScrubbing() {
                     if (isScrubbing) {
@@ -340,8 +341,8 @@
                     }
                 }
 
-                window.addEventListener('mouseup', stopScrubbing);
-                window.addEventListener('touchend', stopScrubbing);
+                window.addEventListener('mouseup', stopScrubbing, { capture: true });
+                window.addEventListener('touchend', stopScrubbing, { capture: true });
 
                 // Build the Chart
                 const ctx = document.getElementById('altitudeChart').getContext('2d');
